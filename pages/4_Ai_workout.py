@@ -1,17 +1,7 @@
-"""
-FitQuest AI - AI Workout Arena
-Stable WebRTC camera + MediaPipe pose detection.
-
-Supported exercises:
-- Bicep Curl
-- Push Up
-
-Designed for:
-- Python 3.11
-- MediaPipe 0.10.18
-- Streamlit
-- streamlit-webrtc
-"""
+# ============================================================
+# FITQUEST AI - AI WORKOUT
+# Render-friendly version
+# ============================================================
 
 import math
 import threading
@@ -21,6 +11,7 @@ import av
 import cv2
 import mediapipe as mp
 import streamlit as st
+
 from streamlit_webrtc import (
     VideoProcessorBase,
     WebRtcMode,
@@ -32,13 +23,14 @@ from utils.auth import (
     get_current_user_id,
     is_logged_in,
 )
+
 from utils.database import get_user
 from utils.gamification import complete_workout
 from utils.ui import apply_fitquest_theme
 
 
 # ============================================================
-# PAGE CONFIGURATION
+# PAGE CONFIG
 # ============================================================
 
 st.set_page_config(
@@ -60,18 +52,29 @@ if not is_logged_in():
     st.title("🏋️ AI Workout Arena")
 
     st.warning(
-        "🔐 Please log in before using the AI workout."
+        "🔐 Please log in before starting an AI workout."
     )
 
     st.info(
-        "Go back to the FitQuest home page and log in first."
+        """
+        Your workout progress is connected to your FitQuest account.
+
+        Log in to:
+
+        • Save workout history
+        • Earn XP
+        • Increase your level
+        • Build your streak
+        • Update your dashboard
+        • Climb the leaderboard
+        """
     )
 
     st.stop()
 
 
 # ============================================================
-# LOAD CURRENT USER
+# CURRENT USER
 # ============================================================
 
 current_user_id = get_current_user_id()
@@ -81,11 +84,11 @@ user = get_user(current_user_id)
 if user is None:
 
     st.error(
-        "Your account could not be loaded from the database."
+        "Your FitQuest account could not be loaded."
     )
 
-    st.info(
-        "Please log out, log in again, and reopen AI Workout."
+    st.warning(
+        "Please log out and log in again."
     )
 
     st.stop()
@@ -95,45 +98,23 @@ if user is None:
 # MEDIAPIPE
 # ============================================================
 
-try:
-
-    mp_pose = mp.solutions.pose
-    mp_drawing = mp.solutions.drawing_utils
-    mp_drawing_styles = mp.solutions.drawing_styles
-
-except AttributeError:
-
-    st.error(
-        "MediaPipe is installed, but the installed version "
-        "does not support the AI Workout code."
-    )
-
-    st.code(
-        '.\\.venv\\Scripts\\python.exe '
-        '-m pip install "mediapipe==0.10.18"',
-        language="powershell",
-    )
-
-    st.stop()
+mp_pose = mp.solutions.pose
+mp_drawing = mp.solutions.drawing_utils
+mp_drawing_styles = mp.solutions.drawing_styles
 
 
 # ============================================================
 # SESSION STATE
 # ============================================================
 
-if "selected_ai_exercise" not in st.session_state:
+if "selected_exercise" not in st.session_state:
+    st.session_state.selected_exercise = "Bicep Curl"
 
-    st.session_state.selected_ai_exercise = "Bicep Curl"
+if "last_workout_result" not in st.session_state:
+    st.session_state.last_workout_result = None
 
-
-if "last_ai_result" not in st.session_state:
-
-    st.session_state.last_ai_result = None
-
-
-if "saved_ai_workout" not in st.session_state:
-
-    st.session_state.saved_ai_workout = None
+if "saved_workout_key" not in st.session_state:
+    st.session_state.saved_workout_key = None
 
 
 # ============================================================
@@ -141,11 +122,6 @@ if "saved_ai_workout" not in st.session_state:
 # ============================================================
 
 def calculate_angle(a, b, c):
-    """
-    Calculate angle ABC.
-
-    a, b and c are (x, y) coordinates.
-    """
 
     ab = (
         a[0] - b[0],
@@ -163,19 +139,18 @@ def calculate_angle(a, b, c):
         math.hypot(*cb)
     )
 
-    if denominator <= 0.000001:
-
+    if denominator == 0:
         return 0.0
 
     cosine = (
-        (ab[0] * cb[0])
+        ab[0] * cb[0]
         +
-        (ab[1] * cb[1])
+        ab[1] * cb[1]
     ) / denominator
 
     cosine = max(
         -1.0,
-        min(1.0, cosine),
+        min(1.0, cosine)
     )
 
     return math.degrees(
@@ -184,113 +159,123 @@ def calculate_angle(a, b, c):
 
 
 # ============================================================
-# BICEP ANALYSIS
+# BICEP CURL ANALYSIS
 # ============================================================
 
-def analyze_bicep(angle):
+def analyze_bicep_curl(angle):
 
-    if angle <= 70:
+    if angle <= 60:
 
         return (
             100,
             "Strong Curl",
-            "Excellent contraction. Now extend your arm.",
+            "Excellent contraction. Now extend your arm."
         )
 
-    if angle <= 100:
+    elif angle <= 90:
 
         return (
-            96,
+            95,
             "Curling",
-            "Good movement. Keep curling smoothly.",
+            "Good movement. Continue upward."
         )
 
-    if angle <= 125:
+    elif angle <= 120:
 
         return (
             90,
             "Mid Movement",
-            "Continue the curl.",
+            "Keep curling smoothly."
         )
 
-    if angle <= 155:
+    elif angle <= 150:
 
         return (
             88,
             "Returning",
-            "Keep extending your arm.",
+            "Extend your arm with control."
         )
 
-    return (
-        92,
-        "Ready",
-        "Good starting position. Curl upward.",
-    )
+    else:
+
+        return (
+            90,
+            "Ready",
+            "Arm is extended. Start your curl."
+        )
 
 
 # ============================================================
 # PUSH-UP ANALYSIS
 # ============================================================
 
-def analyze_pushup(angle):
+def analyze_push_up(angle):
 
-    if angle <= 95:
+    if angle <= 90:
 
         return (
             100,
             "Bottom Position",
-            "Good depth. Push upward.",
+            "Good depth. Push upward."
         )
 
-    if angle <= 120:
+    elif angle <= 110:
 
         return (
-            94,
-            "Lowering",
-            "Good. Continue smoothly.",
+            95,
+            "Good Depth",
+            "Good depth. Start pushing upward."
         )
 
-    if angle <= 145:
+    elif angle <= 135:
+
+        return (
+            90,
+            "Mid Movement",
+            "Continue smoothly."
+        )
+
+    elif angle <= 160:
 
         return (
             88,
-            "Moving",
-            "Continue the movement.",
+            "Pushing Up",
+            "Continue pushing upward."
         )
 
-    return (
-        92,
-        "Top Position",
-        "Good position. Lower yourself.",
-    )
+    else:
+
+        return (
+            90,
+            "Up Position",
+            "Arms extended. Lower yourself."
+        )
 
 
 # ============================================================
-# AI VIDEO PROCESSOR
+# POSE PROCESSOR
 # ============================================================
 
 class PoseVideoProcessor(VideoProcessorBase):
 
-    def __init__(self, exercise):
+    def __init__(self, exercise_name):
 
-        self.exercise = exercise
-
-        # Lightweight MediaPipe configuration.
-        # This is intentionally model_complexity=0
-        # to make the application smoother.
+        self.exercise_name = exercise_name
 
         self.pose = mp_pose.Pose(
+
             static_image_mode=False,
-            model_complexity=0,
+
+            model_complexity=1,
+
             smooth_landmarks=True,
+
             enable_segmentation=False,
+
             min_detection_confidence=0.35,
+
             min_tracking_confidence=0.35,
         )
-
-        # ----------------------------------------------------
-        # Workout state
-        # ----------------------------------------------------
 
         self.reps = 0
 
@@ -298,17 +283,15 @@ class PoseVideoProcessor(VideoProcessorBase):
 
         self.current_score = 0.0
 
-        self.current_status = "Starting Camera"
+        self.current_status = (
+            "Starting camera..."
+        )
 
         self.current_feedback = (
-            "Allow camera access and stand in view."
+            "Allow camera access and move into view."
         )
 
         self.landmarks_detected = False
-
-        # ----------------------------------------------------
-        # Rep state
-        # ----------------------------------------------------
 
         self.stage = "waiting"
 
@@ -316,25 +299,13 @@ class PoseVideoProcessor(VideoProcessorBase):
 
         self.minimum_rep_interval = 0.60
 
-        # ----------------------------------------------------
-        # Smoothing
-        # ----------------------------------------------------
-
         self.angle_history = []
-
-        # ----------------------------------------------------
-        # Workout score
-        # ----------------------------------------------------
 
         self.total_score = 0.0
 
         self.score_samples = 0
 
         self.start_time = time.time()
-
-        # ----------------------------------------------------
-        # Thread safety
-        # ----------------------------------------------------
 
         self.state_lock = threading.Lock()
 
@@ -364,7 +335,7 @@ class PoseVideoProcessor(VideoProcessorBase):
             float(angle)
         )
 
-        if len(self.angle_history) > 3:
+        if len(self.angle_history) > 5:
 
             self.angle_history.pop(0)
 
@@ -373,51 +344,6 @@ class PoseVideoProcessor(VideoProcessorBase):
             /
             len(self.angle_history)
         )
-
-
-    # ========================================================
-    # SNAPSHOT
-    # ========================================================
-
-    def snapshot(self):
-
-        with self.state_lock:
-
-            return {
-
-                "reps": int(self.reps),
-
-                "current_angle": round(
-                    float(self.current_angle),
-                    1,
-                ),
-
-                "current_score": round(
-                    float(self.current_score),
-                    1,
-                ),
-
-                "current_status":
-                    self.current_status,
-
-                "current_feedback":
-                    self.current_feedback,
-
-                "landmarks_detected":
-                    bool(self.landmarks_detected),
-
-                "stage":
-                    self.stage,
-
-                "total_score":
-                    float(self.total_score),
-
-                "score_samples":
-                    int(self.score_samples),
-
-                "start_time":
-                    float(self.start_time),
-            }
 
 
     # ========================================================
@@ -450,12 +376,70 @@ class PoseVideoProcessor(VideoProcessorBase):
 
 
     # ========================================================
-    # BICEP CURL COUNTING
+    # SNAPSHOT
+    # ========================================================
+
+    def snapshot(self):
+
+        with self.state_lock:
+
+            return {
+
+                "reps": int(
+                    self.reps
+                ),
+
+                "current_angle": round(
+                    float(
+                        self.current_angle
+                    ),
+                    1,
+                ),
+
+                "current_score": round(
+                    float(
+                        self.current_score
+                    ),
+                    1,
+                ),
+
+                "stage": self.stage,
+
+                "current_status":
+                    self.current_status,
+
+                "current_feedback":
+                    self.current_feedback,
+
+                "landmarks_detected":
+                    bool(
+                        self.landmarks_detected
+                    ),
+
+                "total_score":
+                    float(
+                        self.total_score
+                    ),
+
+                "score_samples":
+                    int(
+                        self.score_samples
+                    ),
+
+                "start_time":
+                    float(
+                        self.start_time
+                    ),
+            }
+
+
+    # ========================================================
+    # BICEP REP COUNTING
     # ========================================================
 
     def count_bicep_curl(self, angle):
 
-        # Starting position
+        # Waiting for initial straight arm
         if self.stage == "waiting":
 
             if angle >= 125:
@@ -467,7 +451,7 @@ class PoseVideoProcessor(VideoProcessorBase):
                 )
 
                 self.current_feedback = (
-                    "Now curl your arm."
+                    "Good starting position. Curl upward."
                 )
 
             else:
@@ -477,16 +461,16 @@ class PoseVideoProcessor(VideoProcessorBase):
                 )
 
                 self.current_feedback = (
-                    "Start with your arm mostly straight."
+                    "Keep your arm more extended."
                 )
 
             return
 
 
-        # Begin curl
+        # Starting curl
         if self.stage == "ready":
 
-            if angle <= 115:
+            if angle <= 120:
 
                 self.stage = "curling"
 
@@ -495,13 +479,13 @@ class PoseVideoProcessor(VideoProcessorBase):
                 )
 
                 self.current_feedback = (
-                    "Good. Keep curling."
+                    "Good. Keep curling upward."
                 )
 
             return
 
 
-        # Reach top
+        # Curl reaches top
         if self.stage == "curling":
 
             if angle <= 100:
@@ -513,13 +497,13 @@ class PoseVideoProcessor(VideoProcessorBase):
                 )
 
                 self.current_feedback = (
-                    "Great. Now lower your arm."
+                    "Great contraction. Lower your arm."
                 )
 
             return
 
 
-        # Start returning
+        # Returning arm
         if self.stage == "top":
 
             if angle >= 115:
@@ -531,13 +515,13 @@ class PoseVideoProcessor(VideoProcessorBase):
                 )
 
                 self.current_feedback = (
-                    "Extend your arm."
+                    "Keep extending your arm."
                 )
 
             return
 
 
-        # Complete repetition
+        # Complete rep
         if self.stage == "returning":
 
             if angle >= 125:
@@ -547,21 +531,20 @@ class PoseVideoProcessor(VideoProcessorBase):
                     self.stage = "ready"
 
                     self.current_status = (
-                        "REP COUNTED"
+                        "Rep Counted"
                     )
 
                     self.current_feedback = (
-                        "Excellent! Repetition counted."
+                        "Excellent! Full repetition counted."
                     )
 
 
     # ========================================================
-    # PUSH-UP COUNTING
+    # PUSH-UP REP COUNTING
     # ========================================================
 
     def count_push_up(self, angle):
 
-        # Starting position
         if self.stage == "waiting":
 
             if angle >= 145:
@@ -573,7 +556,7 @@ class PoseVideoProcessor(VideoProcessorBase):
                 )
 
                 self.current_feedback = (
-                    "Lower yourself."
+                    "Good starting position. Lower yourself."
                 )
 
             else:
@@ -583,16 +566,15 @@ class PoseVideoProcessor(VideoProcessorBase):
                 )
 
                 self.current_feedback = (
-                    "Start in a straighter position."
+                    "Move into a straighter position."
                 )
 
             return
 
 
-        # Start lowering
         if self.stage == "ready":
 
-            if angle <= 130:
+            if angle <= 135:
 
                 self.stage = "lowering"
 
@@ -601,13 +583,12 @@ class PoseVideoProcessor(VideoProcessorBase):
                 )
 
                 self.current_feedback = (
-                    "Good. Keep going."
+                    "Good. Continue lowering."
                 )
 
             return
 
 
-        # Bottom
         if self.stage == "lowering":
 
             if angle <= 110:
@@ -625,7 +606,6 @@ class PoseVideoProcessor(VideoProcessorBase):
             return
 
 
-        # Push upward
         if self.stage == "bottom":
 
             if angle >= 130:
@@ -637,13 +617,12 @@ class PoseVideoProcessor(VideoProcessorBase):
                 )
 
                 self.current_feedback = (
-                    "Push back up."
+                    "Push back to the upper position."
                 )
 
             return
 
 
-        # Complete
         if self.stage == "pushing":
 
             if angle >= 145:
@@ -653,417 +632,425 @@ class PoseVideoProcessor(VideoProcessorBase):
                     self.stage = "ready"
 
                     self.current_status = (
-                        "REP COUNTED"
+                        "Rep Counted"
                     )
 
                     self.current_feedback = (
-                        "Excellent! Repetition counted."
+                        "Excellent! Full push-up counted."
                     )
 
 
     # ========================================================
-    # RECEIVE CAMERA FRAME
+    # VIDEO FRAME
     # ========================================================
 
     def recv(self, frame):
-
-        # Always create an image first.
-        # This prevents an exception from killing the track.
 
         image = frame.to_ndarray(
             format="bgr24"
         )
 
+        # Mirror camera
+        image = cv2.flip(
+            image,
+            1
+        )
+
+        rgb = cv2.cvtColor(
+            image,
+            cv2.COLOR_BGR2RGB
+        )
+
+        # ----------------------------------------------------
+        # MEDIAPIPE
+        # ----------------------------------------------------
+
         try:
 
-            # Mirror camera.
-            image = cv2.flip(
-                image,
-                1,
-            )
-
-            # Convert BGR -> RGB.
-            rgb = cv2.cvtColor(
-                image,
-                cv2.COLOR_BGR2RGB,
-            )
-
-            # MediaPipe pose detection.
             results = self.pose.process(
                 rgb
             )
 
+        except Exception:
+
             with self.state_lock:
+
+                self.current_status = (
+                    "AI Processing Error"
+                )
+
+                self.current_feedback = (
+                    "Camera is connected, but AI processing failed."
+                )
 
                 self.landmarks_detected = False
 
+            cv2.putText(
+                image,
+                "AI PROCESSING ERROR",
+                (20, 45),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.75,
+                (0, 0, 255),
+                2,
+            )
 
-            # ------------------------------------------------
-            # Pose found
-            # ------------------------------------------------
+            return av.VideoFrame.from_ndarray(
+                image,
+                format="bgr24"
+            )
 
-            if results.pose_landmarks:
 
-                landmarks = (
-                    results.pose_landmarks.landmark
-                )
+        with self.state_lock:
 
-                # Right arm
-                right_ids = [
+            self.landmarks_detected = False
 
-                    mp_pose.PoseLandmark.RIGHT_SHOULDER,
 
-                    mp_pose.PoseLandmark.RIGHT_ELBOW,
+        # ----------------------------------------------------
+        # POSE FOUND
+        # ----------------------------------------------------
 
-                    mp_pose.PoseLandmark.RIGHT_WRIST,
+        if results.pose_landmarks:
 
-                ]
+            landmarks = (
+                results.pose_landmarks.landmark
+            )
 
-                # Left arm
-                left_ids = [
+            right_ids = [
 
-                    mp_pose.PoseLandmark.LEFT_SHOULDER,
+                mp_pose.PoseLandmark.RIGHT_SHOULDER,
 
-                    mp_pose.PoseLandmark.LEFT_ELBOW,
+                mp_pose.PoseLandmark.RIGHT_ELBOW,
 
-                    mp_pose.PoseLandmark.LEFT_WRIST,
+                mp_pose.PoseLandmark.RIGHT_WRIST,
+            ]
 
-                ]
+            left_ids = [
 
-                right_points = [
+                mp_pose.PoseLandmark.LEFT_SHOULDER,
 
-                    landmarks[index.value]
+                mp_pose.PoseLandmark.LEFT_ELBOW,
 
-                    for index in right_ids
+                mp_pose.PoseLandmark.LEFT_WRIST,
+            ]
 
-                ]
 
-                left_points = [
+            right = [
+                landmarks[i.value]
+                for i in right_ids
+            ]
 
-                    landmarks[index.value]
+            left = [
+                landmarks[i.value]
+                for i in left_ids
+            ]
 
-                    for index in left_ids
 
-                ]
+            right_visibility = min(
+                float(p.visibility)
+                for p in right
+            )
 
-                right_visibility = min(
+            left_visibility = min(
+                float(p.visibility)
+                for p in left
+            )
 
-                    float(point.visibility)
 
-                    for point in right_points
+            if right_visibility >= left_visibility:
 
-                )
+                points = right
 
-                left_visibility = min(
-
-                    float(point.visibility)
-
-                    for point in left_points
-
-                )
-
-                # Use the side that is more visible.
-                if (
+                best_visibility = (
                     right_visibility
-                    >=
+                )
+
+            else:
+
+                points = left
+
+                best_visibility = (
                     left_visibility
+                )
+
+
+            # ------------------------------------------------
+            # VISIBILITY CHECK
+            # ------------------------------------------------
+
+            if best_visibility >= 0.30:
+
+                height, width = (
+                    image.shape[:2]
+                )
+
+                shoulder = points[0]
+
+                elbow = points[1]
+
+                wrist = points[2]
+
+
+                shoulder_pt = (
+                    shoulder.x * width,
+                    shoulder.y * height,
+                )
+
+                elbow_pt = (
+                    elbow.x * width,
+                    elbow.y * height,
+                )
+
+                wrist_pt = (
+                    wrist.x * width,
+                    wrist.y * height,
+                )
+
+
+                raw_angle = calculate_angle(
+                    shoulder_pt,
+                    elbow_pt,
+                    wrist_pt,
+                )
+
+
+                angle = self.smooth_angle(
+                    raw_angle
+                )
+
+
+                # --------------------------------------------
+                # EXERCISE ANALYSIS
+                # --------------------------------------------
+
+                if (
+                    self.exercise_name
+                    ==
+                    "Bicep Curl"
                 ):
 
-                    points = right_points
-
-                    visibility = right_visibility
+                    (
+                        score,
+                        status,
+                        feedback,
+                    ) = analyze_bicep_curl(
+                        angle
+                    )
 
                 else:
 
-                    points = left_points
-
-                    visibility = left_visibility
-
-
-                # ------------------------------------------------
-                # Calculate angle
-                # ------------------------------------------------
-
-                if visibility >= 0.25:
-
-                    height, width = image.shape[:2]
-
-                    shoulder, elbow, wrist = points
-
-                    shoulder_point = (
-
-                        shoulder.x * width,
-
-                        shoulder.y * height,
-
-                    )
-
-                    elbow_point = (
-
-                        elbow.x * width,
-
-                        elbow.y * height,
-
-                    )
-
-                    wrist_point = (
-
-                        wrist.x * width,
-
-                        wrist.y * height,
-
-                    )
-
-                    raw_angle = calculate_angle(
-
-                        shoulder_point,
-
-                        elbow_point,
-
-                        wrist_point,
-
-                    )
-
-                    angle = self.smooth_angle(
-                        raw_angle
+                    (
+                        score,
+                        status,
+                        feedback,
+                    ) = analyze_push_up(
+                        angle
                     )
 
 
-                    # ------------------------------------------------
-                    # AI scoring
-                    # ------------------------------------------------
+                with self.state_lock:
 
-                    if self.exercise == "Bicep Curl":
+                    self.landmarks_detected = True
 
-                        score, status, feedback = (
-                            analyze_bicep(angle)
+                    self.current_angle = angle
+
+                    self.current_score = score
+
+                    self.current_status = status
+
+                    self.current_feedback = feedback
+
+
+                    if (
+                        self.exercise_name
+                        ==
+                        "Bicep Curl"
+                    ):
+
+                        self.count_bicep_curl(
+                            angle
                         )
 
                     else:
 
-                        score, status, feedback = (
-                            analyze_pushup(angle)
+                        self.count_push_up(
+                            angle
                         )
 
 
-                    # ------------------------------------------------
-                    # Update state
-                    # ------------------------------------------------
+                # --------------------------------------------
+                # ANGLE ON SCREEN
+                # --------------------------------------------
 
-                    with self.state_lock:
-
-                        self.landmarks_detected = True
-
-                        self.current_angle = angle
-
-                        self.current_score = score
-
-                        self.current_status = status
-
-                        self.current_feedback = feedback
-
-
-                        if (
-                            self.exercise
-                            ==
-                            "Bicep Curl"
-                        ):
-
-                            self.count_bicep_curl(
-                                angle
-                            )
-
-                        else:
-
-                            self.count_push_up(
-                                angle
-                            )
-
-
-                    # Angle label
-                    cv2.putText(
-
-                        image,
-
-                        f"Angle: {int(angle)}",
-
-                        (
-                            int(elbow.x * width) + 10,
-                            int(elbow.y * height) - 10,
-                        ),
-
-                        cv2.FONT_HERSHEY_SIMPLEX,
-
-                        0.75,
-
-                        (0, 255, 0),
-
-                        2,
-
-                    )
-
-
-                else:
-
-                    with self.state_lock:
-
-                        self.current_status = (
-                            "Pose Not Clear"
-                        )
-
-                        self.current_feedback = (
-                            "Move closer and keep "
-                            "your shoulder, elbow and "
-                            "wrist visible."
-                        )
-
-
-                # Draw MediaPipe landmarks.
-                mp_drawing.draw_landmarks(
+                cv2.putText(
 
                     image,
 
-                    results.pose_landmarks,
+                    f"ANGLE: {int(angle)}",
 
-                    mp_pose.POSE_CONNECTIONS,
+                    (
+                        int(
+                            elbow.x * width
+                        ) + 10,
 
-                    landmark_drawing_spec=(
-                        mp_drawing_styles
-                        .get_default_pose_landmarks_style()
+                        int(
+                            elbow.y * height
+                        ) - 10,
                     ),
 
+                    cv2.FONT_HERSHEY_SIMPLEX,
+
+                    0.70,
+
+                    (0, 255, 0),
+
+                    2,
                 )
 
-
-            # ------------------------------------------------
-            # No pose
-            # ------------------------------------------------
 
             else:
 
                 with self.state_lock:
 
                     self.current_status = (
-                        "No Pose Detected"
+                        "Move Into View"
                     )
 
                     self.current_feedback = (
-                        "Stand in front of the camera "
-                        "with your upper body visible."
+                        "Keep shoulder, elbow and wrist visible."
                     )
 
 
             # ------------------------------------------------
-            # Camera overlay
+            # DRAW LANDMARKS
             # ------------------------------------------------
 
-            snapshot = self.snapshot()
-
-            cv2.rectangle(
+            mp_drawing.draw_landmarks(
 
                 image,
 
-                (10, 10),
+                results.pose_landmarks,
 
-                (380, 205),
+                mp_pose.POSE_CONNECTIONS,
 
-                (0, 0, 0),
-
-                -1,
-
-            )
-
-            cv2.putText(
-
-                image,
-
-                f"REPS: {snapshot['reps']}",
-
-                (25, 50),
-
-                cv2.FONT_HERSHEY_SIMPLEX,
-
-                0.9,
-
-                (0, 255, 0),
-
-                2,
-
-            )
-
-            cv2.putText(
-
-                image,
-
-                f"ANGLE: {int(snapshot['current_angle'])}",
-
-                (25, 90),
-
-                cv2.FONT_HERSHEY_SIMPLEX,
-
-                0.72,
-
-                (255, 255, 255),
-
-                2,
-
-            )
-
-            cv2.putText(
-
-                image,
-
-                f"STAGE: {snapshot['stage']}",
-
-                (25, 130),
-
-                cv2.FONT_HERSHEY_SIMPLEX,
-
-                0.68,
-
-                (255, 255, 255),
-
-                2,
-
-            )
-
-            cv2.putText(
-
-                image,
-
-                f"SCORE: {int(snapshot['current_score'])}",
-
-                (25, 170),
-
-                cv2.FONT_HERSHEY_SIMPLEX,
-
-                0.68,
-
-                (255, 255, 255),
-
-                2,
-
+                landmark_drawing_spec=(
+                    mp_drawing_styles
+                    .get_default_pose_landmarks_style()
+                ),
             )
 
 
-        except Exception:
+        else:
 
-            # Keep the camera alive even if one frame fails.
             with self.state_lock:
 
                 self.current_status = (
-                    "AI Frame Error"
+                    "No Pose Detected"
                 )
 
                 self.current_feedback = (
-                    "Camera is connected. "
-                    "AI is recovering..."
+                    "Move into the camera view."
                 )
 
 
-        return av.VideoFrame.from_ndarray(
+        # ====================================================
+        # OVERLAY
+        # ====================================================
+
+        snap = self.snapshot()
+
+
+        cv2.rectangle(
+
             image,
-            format="bgr24",
+
+            (10, 10),
+
+            (390, 190),
+
+            (0, 0, 0),
+
+            -1,
+        )
+
+
+        cv2.putText(
+
+            image,
+
+            f"REPS: {snap['reps']}",
+
+            (25, 48),
+
+            cv2.FONT_HERSHEY_SIMPLEX,
+
+            0.85,
+
+            (0, 255, 0),
+
+            2,
+        )
+
+
+        cv2.putText(
+
+            image,
+
+            f"ANGLE: {int(snap['current_angle'])}",
+
+            (25, 85),
+
+            cv2.FONT_HERSHEY_SIMPLEX,
+
+            0.65,
+
+            (255, 255, 255),
+
+            2,
+        )
+
+
+        cv2.putText(
+
+            image,
+
+            f"STAGE: {snap['stage']}",
+
+            (25, 120),
+
+            cv2.FONT_HERSHEY_SIMPLEX,
+
+            0.65,
+
+            (255, 255, 255),
+
+            2,
+        )
+
+
+        cv2.putText(
+
+            image,
+
+            f"SCORE: {int(snap['current_score'])}",
+
+            (25, 155),
+
+            cv2.FONT_HERSHEY_SIMPLEX,
+
+            0.65,
+
+            (255, 255, 255),
+
+            2,
+        )
+
+
+        return av.VideoFrame.from_ndarray(
+
+            image,
+
+            format="bgr24"
         )
 
 
@@ -1076,8 +1063,8 @@ st.title(
 )
 
 st.write(
-    f"Welcome, **{user.get('username', 'FitQuest Player')}**. "
-    "Use your camera to count repetitions and check your movement."
+    f"Welcome, **{user.get('username', 'FitQuest Player')}**! "
+    "Use real-time AI pose detection to analyze your exercise."
 )
 
 
@@ -1085,26 +1072,27 @@ st.write(
 # USER STATS
 # ============================================================
 
-col1, col2, col3, col4 = st.columns(4)
+columns = st.columns(4)
 
-col1.metric(
-    "⭐ XP",
-    user.get("xp", 0),
+
+columns[0].metric(
+    "⭐ Current XP",
+    user.get("xp", 0)
 )
 
-col2.metric(
+columns[1].metric(
     "🏆 Level",
-    user.get("level", 1),
+    user.get("level", 1)
 )
 
-col3.metric(
+columns[2].metric(
     "🔥 Streak",
-    f"{user.get('streak', 0)} Days",
+    f"{user.get('streak', 0)} Days"
 )
 
-col4.metric(
+columns[3].metric(
     "💪 Workouts",
-    user.get("total_workouts", 0),
+    user.get("total_workouts", 0)
 )
 
 
@@ -1117,7 +1105,7 @@ st.divider()
 
 selected_exercise = st.selectbox(
 
-    "Choose exercise",
+    "🏋️ Choose Exercise",
 
     [
         "Bicep Curl",
@@ -1126,17 +1114,17 @@ selected_exercise = st.selectbox(
 
     index=(
         0
-        if st.session_state.selected_ai_exercise
+        if st.session_state.selected_exercise
         ==
         "Bicep Curl"
-        else
-        1
+        else 1
     ),
 
+    key="exercise_selector",
 )
 
 
-st.session_state.selected_ai_exercise = (
+st.session_state.selected_exercise = (
     selected_exercise
 )
 
@@ -1148,18 +1136,30 @@ st.session_state.selected_ai_exercise = (
 if selected_exercise == "Bicep Curl":
 
     st.info(
-        "📷 Stand side-on to the camera. "
-        "Keep your shoulder, elbow and wrist visible. "
-        "Start with your arm mostly straight, curl upward, "
-        "then return to the starting position."
+        """
+        📷 **Bicep Curl Setup**
+
+        • Stand side-on to the camera.
+        • Keep your full arm visible.
+        • Shoulder, elbow and wrist should be visible.
+        • Start with your arm mostly straight.
+        • Curl upward.
+        • Return to the straight position.
+        """
     )
 
 else:
 
     st.info(
-        "📷 For push-ups, position the camera side-on. "
-        "Keep your shoulder, elbow and wrist visible. "
-        "Start straight, lower yourself, then push upward."
+        """
+        📷 **Push Up Setup**
+
+        • Place the camera side-on.
+        • Keep shoulder, elbow and wrist visible.
+        • Start with arms extended.
+        • Lower your body.
+        • Push back up.
+        """
     )
 
 
@@ -1172,30 +1172,56 @@ st.subheader(
 )
 
 st.caption(
-    "Click START inside the camera box. "
-    "When Chrome asks for camera permission, choose Allow."
+    "Allow camera permission when your browser asks."
+)
+
+st.caption(
+    "Chrome or Edge recommended."
 )
 
 
-# ------------------------------------------------------------
-# IMPORTANT:
-# Keep ICE configuration simple.
-# ------------------------------------------------------------
+# ============================================================
+# WEBRTC CONFIGURATION
+# ============================================================
+#
+# We intentionally do NOT require Cloudflare TURN here.
+#
+# Multiple STUN servers give WebRTC several options for
+# discovering a direct connection.
+#
+# ============================================================
 
 ICE_SERVERS = [
 
     {
-        "urls":
-        ["stun:stun.l.google.com:19302"]
+        "urls": [
+            "stun:stun.l.google.com:19302"
+        ]
     },
 
     {
-        "urls":
-        ["stun:stun.cloudflare.com:3478"]
+        "urls": [
+            "stun:stun1.l.google.com:19302"
+        ]
     },
 
+    {
+        "urls": [
+            "stun:stun2.l.google.com:19302"
+        ]
+    },
+
+    {
+        "urls": [
+            "stun:stun.cloudflare.com:3478"
+        ]
+    },
 ]
 
+
+# ============================================================
+# CAMERA STREAM
+# ============================================================
 
 exercise_key = (
     selected_exercise
@@ -1204,80 +1230,106 @@ exercise_key = (
 )
 
 
-# ------------------------------------------------------------
-# WebRTC
-# ------------------------------------------------------------
+try:
 
-webrtc_ctx = webrtc_streamer(
+    webrtc_ctx = webrtc_streamer(
 
-    key=(
-        "fitquest-ai-camera-"
-        + exercise_key
-    ),
-
-    mode=WebRtcMode.SENDRECV,
-
-    media_stream_constraints={
-
-        "video": {
-
-            "width": {
-                "ideal": 640
-            },
-
-            "height": {
-                "ideal": 480
-            },
-
-            "frameRate": {
-                "ideal": 20,
-                "max": 24,
-            },
-
-            "facingMode": "user",
-
-        },
-
-        "audio": False,
-
-    },
-
-    video_processor_factory=lambda:
-        PoseVideoProcessor(
-            selected_exercise
+        key=(
+            f"fitquest-ai-camera-"
+            f"{current_user_id}-"
+            f"{exercise_key}"
         ),
 
-    async_processing=True,
+        mode=WebRtcMode.SENDRECV,
 
-    rtc_configuration={
-        "iceServers":
-        ICE_SERVERS
-    },
+        media_stream_constraints={
 
-)
+            "video": {
+
+                "width": {
+                    "ideal": 640,
+                    "max": 1280,
+                },
+
+                "height": {
+                    "ideal": 480,
+                    "max": 720,
+                },
+
+                "frameRate": {
+                    "ideal": 20,
+                    "max": 30,
+                },
+
+                "facingMode": "user",
+            },
+
+            "audio": False,
+        },
+
+        video_processor_factory=lambda:
+            PoseVideoProcessor(
+                selected_exercise
+            ),
+
+        async_processing=True,
+
+        rtc_configuration={
+            "iceServers": ICE_SERVERS
+        },
+    )
+
+
+except Exception as error:
+
+    st.error(
+        "❌ Camera component could not start."
+    )
+
+    st.code(
+        str(error)
+    )
+
+    st.info(
+        """
+        Try these steps:
+
+        1. Use Chrome.
+        2. Allow camera permission.
+        3. Refresh the page.
+        4. Close other apps using the camera.
+        5. Try again.
+        """
+
+    )
+
+    st.stop()
 
 
 # ============================================================
-# CAMERA STATUS
+# CONNECTION STATUS
 # ============================================================
 
 if webrtc_ctx.state.playing:
 
     st.success(
-        "🟢 Camera connected. "
-        "AI is analyzing your movement."
+        "🟢 Camera connected successfully!"
+    )
+
+    st.info(
+        "Move into the camera view and start your exercise."
     )
 
 elif webrtc_ctx.state.signalling:
 
     st.info(
-        "🔄 Connecting to camera..."
+        "🔄 Connecting to your camera..."
     )
 
 else:
 
     st.info(
-        "Press START above the camera to begin."
+        "Click START above the camera to begin."
     )
 
 
@@ -1285,63 +1337,127 @@ else:
 # LIVE AI ANALYSIS
 # ============================================================
 
-if webrtc_ctx.video_processor:
+if hasattr(st, "fragment"):
 
-    live = (
-        webrtc_ctx
-        .video_processor
-        .snapshot()
-    )
+    @st.fragment(run_every="500ms")
+    def live_analysis():
 
-    st.divider()
-
-    st.subheader(
-        "🤖 Live AI Analysis"
-    )
-
-    a, b, c, d = st.columns(4)
-
-    a.metric(
-        "🔁 Reps",
-        live["reps"],
-    )
-
-    b.metric(
-        "📐 Angle",
-        f"{live['current_angle']}°",
-    )
-
-    c.metric(
-        "⭐ Form",
-        f"{live['current_score']:.0f}/100",
-    )
-
-    d.metric(
-        "🔄 Stage",
-        live["stage"].title(),
-    )
-
-    st.info(
-        f"**Status:** "
-        f"{live['current_status']} — "
-        f"{live['current_feedback']}"
-    )
-
-    if live["landmarks_detected"]:
-
-        st.success(
-            "✅ Body landmarks detected."
+        processor = (
+            webrtc_ctx.video_processor
         )
 
-    else:
+        if processor:
 
-        st.warning(
-            "⚠️ Waiting for a clear pose."
+            live = processor.snapshot()
+
+            st.divider()
+
+            st.subheader(
+                "🤖 Live AI Analysis"
+            )
+
+            m1, m2, m3, m4 = (
+                st.columns(4)
+            )
+
+            m1.metric(
+                "🔁 Repetitions",
+                live["reps"]
+            )
+
+            m2.metric(
+                "📐 Elbow Angle",
+                f"{live['current_angle']}°"
+            )
+
+            m3.metric(
+                "⭐ Form Score",
+                f"{live['current_score']:.0f}/100"
+            )
+
+            m4.metric(
+                "🔄 Stage",
+                live["stage"].title()
+            )
+
+            st.info(
+                f"**Status:** "
+                f"{live['current_status']} — "
+                f"{live['current_feedback']}"
+            )
+
+
+            if live["landmarks_detected"]:
+
+                st.success(
+                    "✅ Body landmarks detected."
+                )
+
+            else:
+
+                st.warning(
+                    "👤 Waiting for a clear body pose..."
+                )
+
+        else:
+
+            st.caption(
+                "AI analysis will appear after the camera starts."
+            )
+
+
+    live_analysis()
+
+
+else:
+
+    processor = (
+        webrtc_ctx.video_processor
+    )
+
+    if processor:
+
+        live = processor.snapshot()
+
+        st.divider()
+
+        st.subheader(
+            "🤖 Live AI Analysis"
+        )
+
+        m1, m2, m3, m4 = (
+            st.columns(4)
+        )
+
+        m1.metric(
+            "🔁 Repetitions",
+            live["reps"]
+        )
+
+        m2.metric(
+            "📐 Elbow Angle",
+            f"{live['current_angle']}°"
+        )
+
+        m3.metric(
+            "⭐ Form Score",
+            f"{live['current_score']:.0f}/100"
+        )
+
+        m4.metric(
+            "🔄 Stage",
+            live["stage"].title()
+        )
+
+        st.info(
+            f"**Status:** "
+            f"{live['current_status']} — "
+            f"{live['current_feedback']}"
         )
 
 
 # ============================================================
-# SAVE WORKOUT
+# COMPLETE WORKOUT
 # ============================================================
 
 st.divider()
@@ -1351,8 +1467,7 @@ st.subheader(
 )
 
 st.write(
-    "After at least one repetition is counted, "
-    "save the workout to your FitQuest account."
+    "Complete at least one full repetition before saving."
 )
 
 
@@ -1361,18 +1476,22 @@ if st.button(
     use_container_width=True,
 ):
 
-    if not webrtc_ctx.video_processor:
+    processor = (
+        webrtc_ctx.video_processor
+    )
+
+
+    if not processor:
 
         st.error(
-            "Please start the camera first."
+            "Please start the AI camera first."
         )
+
 
     else:
 
         workout_state = (
-            webrtc_ctx
-            .video_processor
-            .snapshot()
+            processor.snapshot()
         )
 
         reps = int(
@@ -1380,59 +1499,67 @@ if st.button(
         )
 
 
-        if reps <= 0:
+        if workout_state[
+            "score_samples"
+        ]:
 
-            st.warning(
-                "No repetition has been counted yet. "
-                "Complete at least one full repetition."
+            form_score = round(
+
+                workout_state[
+                    "total_score"
+                ]
+                /
+                workout_state[
+                    "score_samples"
+                ],
+
+                1,
             )
 
         else:
 
-            if (
-                workout_state["score_samples"]
-                > 0
-            ):
+            form_score = round(
 
-                form_score = round(
+                workout_state[
+                    "current_score"
+                ],
 
-                    workout_state[
-                        "total_score"
-                    ]
-                    /
-                    workout_state[
-                        "score_samples"
-                    ],
+                1,
+            )
 
-                    1,
 
-                )
+        # ----------------------------------------------------
+        # NO REPS
+        # ----------------------------------------------------
 
-            else:
+        if reps <= 0:
 
-                form_score = round(
+            st.warning(
+                "No completed repetition detected yet."
+            )
 
-                    workout_state[
-                        "current_score"
-                    ],
+            st.info(
+                "Perform one complete repetition and try again."
+            )
 
-                    1,
 
-                )
-
+        else:
 
             workout_key = (
 
                 f"{current_user_id}-"
                 f"{selected_exercise}-"
-                f"{workout_state['start_time']}-"
-                f"{reps}"
-
+                f"{reps}-"
+                f"{workout_state['start_time']}"
             )
 
 
+            # ------------------------------------------------
+            # PREVENT DUPLICATE SAVE
+            # ------------------------------------------------
+
             if (
-                st.session_state.saved_ai_workout
+                st.session_state.saved_workout_key
                 ==
                 workout_key
             ):
@@ -1440,6 +1567,7 @@ if st.button(
                 st.warning(
                     "This workout has already been saved."
                 )
+
 
             else:
 
@@ -1449,30 +1577,38 @@ if st.button(
 
                         user_id=current_user_id,
 
-                        exercise_name=selected_exercise,
+                        exercise_name=(
+                            selected_exercise
+                        ),
 
                         reps=reps,
 
                         form_score=form_score,
-
                     )
 
-                    st.session_state.saved_ai_workout = (
-                        workout_key
-                    )
 
-                    st.session_state.last_ai_result = (
+                    st.session_state.last_workout_result = (
                         result
                     )
 
-                    st.success(
-                        "🎉 Workout saved successfully!"
+                    st.session_state.saved_workout_key = (
+                        workout_key
                     )
+
+
+                    st.success(
+                        "🎉 Workout completed and saved!"
+                    )
+
 
                 except Exception as error:
 
                     st.error(
-                        f"Could not save workout: {error}"
+                        "Workout could not be saved."
+                    )
+
+                    st.code(
+                        str(error)
                     )
 
 
@@ -1480,10 +1616,10 @@ if st.button(
 # WORKOUT RESULT
 # ============================================================
 
-if st.session_state.last_ai_result:
+if st.session_state.last_workout_result:
 
     result = (
-        st.session_state.last_ai_result
+        st.session_state.last_workout_result
     )
 
     st.divider()
@@ -1492,29 +1628,51 @@ if st.session_state.last_ai_result:
         "🎉 Workout Result"
     )
 
-    r1, r2, r3 = st.columns(3)
+
+    r1, r2, r3 = (
+        st.columns(3)
+    )
+
 
     r1.metric(
         "🔁 Reps",
-        result.get("reps", 0),
+        result.get(
+            "reps",
+            0
+        )
     )
+
 
     r2.metric(
         "⭐ XP Earned",
-        result.get("xp_earned", 0),
+        result.get(
+            "xp_earned",
+            0
+        )
     )
+
 
     r3.metric(
         "🏆 Level",
-        result.get("level", 1),
+        result.get(
+            "level",
+            1
+        )
     )
 
+
     st.success(
-        f"🔥 Streak: "
+        f"🔥 Current Streak: "
         f"{result.get('streak', 0)} Days"
     )
+
 
     st.success(
         f"⭐ Total XP: "
         f"{result.get('total_xp', 0)}"
     )
+
+
+# ============================================================
+# END
+# ============================================================
