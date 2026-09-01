@@ -1184,39 +1184,134 @@ st.caption(
 # WEBRTC CONFIGURATION
 # ============================================================
 #
-# We intentionally do NOT require Cloudflare TURN here.
+# IMPORTANT FOR STREAMLIT COMMUNITY CLOUD:
+# STUN alone is not reliable for every network.
+# We therefore support a TURN server through Streamlit Secrets.
 #
-# Multiple STUN servers give WebRTC several options for
-# discovering a direct connection.
+# The app still keeps several public STUN servers as a fallback.
+# TURN credentials are NEVER hard-coded in this file.
+#
+# Add these to Streamlit Cloud -> App Settings -> Secrets:
+#
+# TURN_USERNAME = "your_turn_username"
+# TURN_CREDENTIAL = "your_turn_credential"
+#
+# The default URLs below are for the free Open Relay/Metered
+# TURN service. The free tier is limited, so use it for testing
+# and normal personal/demo usage.
 #
 # ============================================================
 
-ICE_SERVERS = [
+def get_ice_servers():
+    """
+    Build the ICE server list used by streamlit-webrtc.
 
-    {
-        "urls": [
-            "stun:stun.l.google.com:19302"
-        ]
-    },
+    STUN is always included.
+    TURN is added only when TURN_USERNAME and TURN_CREDENTIAL
+    are available in Streamlit Secrets.
+    """
 
-    {
-        "urls": [
-            "stun:stun1.l.google.com:19302"
-        ]
-    },
+    ice_servers = [
+        {
+            "urls": [
+                "stun:stun.l.google.com:19302",
+            ]
+        },
+        {
+            "urls": [
+                "stun:stun1.l.google.com:19302",
+            ]
+        },
+        {
+            "urls": [
+                "stun:stun2.l.google.com:19302",
+            ]
+        },
+        {
+            "urls": [
+                "stun:stun.cloudflare.com:3478",
+            ]
+        },
+    ]
 
-    {
-        "urls": [
-            "stun:stun2.l.google.com:19302"
-        ]
-    },
+    # --------------------------------------------------------
+    # Read TURN credentials from Streamlit Secrets
+    # --------------------------------------------------------
 
-    {
-        "urls": [
-            "stun:stun.cloudflare.com:3478"
-        ]
-    },
-]
+    try:
+        turn_username = str(
+            st.secrets.get("TURN_USERNAME", "")
+        ).strip()
+
+        turn_credential = str(
+            st.secrets.get("TURN_CREDENTIAL", "")
+        ).strip()
+
+        # Optional custom TURN server.
+        # If not supplied, use the free Metered/OpenRelay
+        # endpoints.
+        turn_server = str(
+            st.secrets.get(
+                "TURN_SERVER",
+                "standard.relay.metered.ca",
+            )
+        ).strip()
+
+    except Exception:
+        turn_username = ""
+        turn_credential = ""
+        turn_server = "standard.relay.metered.ca"
+
+    # --------------------------------------------------------
+    # Add TURN only when credentials exist
+    # --------------------------------------------------------
+
+    if turn_username and turn_credential:
+
+        ice_servers.extend(
+            [
+                {
+                    "urls": [
+                        f"turn:{turn_server}:80",
+                    ],
+                    "username": turn_username,
+                    "credential": turn_credential,
+                },
+                {
+                    "urls": [
+                        f"turn:{turn_server}:80?transport=tcp",
+                    ],
+                    "username": turn_username,
+                    "credential": turn_credential,
+                },
+                {
+                    "urls": [
+                        f"turn:{turn_server}:443",
+                    ],
+                    "username": turn_username,
+                    "credential": turn_credential,
+                },
+                {
+                    "urls": [
+                        f"turns:{turn_server}:443?transport=tcp",
+                    ],
+                    "username": turn_username,
+                    "credential": turn_credential,
+                },
+            ]
+        )
+
+    return ice_servers
+
+
+ICE_SERVERS = get_ice_servers()
+
+TURN_ENABLED = any(
+    isinstance(server, dict)
+    and server.get("username")
+    and server.get("credential")
+    for server in ICE_SERVERS
+)
 
 
 # ============================================================
@@ -1228,7 +1323,6 @@ exercise_key = (
     .lower()
     .replace(" ", "-")
 )
-
 
 try:
 
@@ -1274,6 +1368,8 @@ try:
 
         async_processing=True,
 
+        # THIS IS THE IMPORTANT PART:
+        # Pass STUN + TURN servers to WebRTC.
         rtc_configuration={
             "iceServers": ICE_SERVERS
         },
@@ -1294,13 +1390,12 @@ except Exception as error:
         """
         Try these steps:
 
-        1. Use Chrome.
+        1. Use Chrome or Edge.
         2. Allow camera permission.
         3. Refresh the page.
         4. Close other apps using the camera.
         5. Try again.
         """
-
     )
 
     st.stop()
@@ -1312,9 +1407,17 @@ except Exception as error:
 
 if webrtc_ctx.state.playing:
 
-    st.success(
-        "🟢 Camera connected successfully!"
-    )
+    if TURN_ENABLED:
+
+        st.success(
+            "🟢 Camera connected successfully using WebRTC + TURN."
+        )
+
+    else:
+
+        st.success(
+            "🟢 Camera connected successfully!"
+        )
 
     st.info(
         "Move into the camera view and start your exercise."
@@ -1323,7 +1426,8 @@ if webrtc_ctx.state.playing:
 elif webrtc_ctx.state.signalling:
 
     st.info(
-        "🔄 Connecting to your camera..."
+        "🔄 Connecting to your camera... "
+        "Please wait a few seconds."
     )
 
 else:
